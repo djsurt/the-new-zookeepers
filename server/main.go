@@ -9,9 +9,11 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/djsurt/the-new-zookeepers/server/proto/raft"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type ElectionServer struct {
@@ -36,7 +38,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	_, err := parseClusterConfig(port, "cluster.conf")
+	peers, err := parseClusterConfig(port, "cluster.conf")
 	if err != nil {
 		fmt.Printf("Error reading cluster config: %v\n", err)
 		os.Exit(1)
@@ -64,7 +66,14 @@ func main() {
 	}(serverErrChan)
 
 	fmt.Printf("Election server listening on port %d...\n", port)
-	// Wait for an error
+	for _, peer := range peers {
+		err := connectToPeer(port, peer)
+		if err != nil {
+			fmt.Printf("Error connectiong to peer %d: %v\n", peer, err)
+		}
+	}
+
+	// Wait for an error from server
 	err = <-serverErrChan
 	fmt.Printf("Error from election server: %v\n", err)
 	os.Exit(1)
@@ -90,4 +99,31 @@ func parseClusterConfig(myPort int, configPath string) (peers []int, err error) 
 		}
 	}
 	return peers, nil
+}
+
+func connectToPeer(myPort int, peerPort int) error {
+	var opts []grpc.DialOption
+	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(fmt.Sprintf("localhost:%d", peerPort), opts...)
+	if err != nil {
+		return err
+	}
+	client := raft.NewElectionClient(conn)
+	voteRequest := &raft.VoteRequest{
+		CandidateId: int32(myPort),
+	}
+
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		for {
+			<-ticker.C
+			vote, err := client.RequestVote(context.TODO(), voteRequest)
+			if err != nil {
+				log.Printf("Error calling RequestVote to %d: %v", peerPort, err)
+				continue
+			}
+			log.Printf("Received vote from %d: %v", peerPort, vote.String())
+		}
+	}()
+	return nil
 }
