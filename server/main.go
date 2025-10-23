@@ -10,14 +10,14 @@ import (
 	"strings"
 	"time"
 
-	election "github.com/djsurt/the-new-zookeepers/server/internal"
-	"github.com/djsurt/the-new-zookeepers/server/proto/raft"
+	raft "github.com/djsurt/the-new-zookeepers/server/internal"
+	raftpb "github.com/djsurt/the-new-zookeepers/server/proto/raft"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
 type ElectionServer struct {
-	raft.UnimplementedElectionServer
+	raftpb.UnimplementedElectionServer
 	clientID int
 }
 
@@ -40,7 +40,7 @@ func main() {
 
 	// Start the server in the background, listening for errors on the
 	// serverErr channel
-	electionServer := election.NewElectionServer(port)
+	electionServer := raft.NewElectionServer(port)
 	serverErr := make(chan error)
 	go func(errChan chan<- error) {
 		fmt.Printf("Election server listening on port %d...\n", port)
@@ -93,8 +93,8 @@ func connectToPeer(myPort int, peerPort int) error {
 	if err != nil {
 		return err
 	}
-	client := raft.NewElectionClient(conn)
-	heartbeat := &raft.AppendEntriesRequest{
+	client := raftpb.NewElectionClient(conn)
+	heartbeat := &raftpb.AppendEntriesRequest{
 		LeaderId: int32(myPort),
 	}
 

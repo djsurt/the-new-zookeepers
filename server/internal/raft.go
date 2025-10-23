@@ -1,4 +1,4 @@
-package election
+package raftpb
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"log"
 	"net"
 
-	"github.com/djsurt/the-new-zookeepers/server/proto/raft"
+	raftpb "github.com/djsurt/the-new-zookeepers/server/proto/raft"
 	"google.golang.org/grpc"
 )
 
@@ -19,7 +19,7 @@ const (
 )
 
 type ElectionServer struct {
-	raft.UnimplementedElectionServer
+	raftpb.UnimplementedElectionServer
 	Port       int
 	state      NodeState
 	grpcServer *grpc.Server
@@ -36,10 +36,10 @@ func NewElectionServer(port int) *ElectionServer {
 // Handle a RequestVote call from a peer in the candidate state.
 func (s *ElectionServer) RequestVote(
 	ctx context.Context,
-	req *raft.VoteRequest,
-) (*raft.Vote, error) {
+	req *raftpb.VoteRequest,
+) (*raftpb.Vote, error) {
 	log.Printf("Vote request received from %d", req.GetCandidateId())
-	vote := &raft.Vote{Term: 1, VoteGranted: false}
+	vote := &raftpb.Vote{Term: 1, VoteGranted: false}
 	return vote, nil
 }
 
@@ -49,10 +49,10 @@ func (s *ElectionServer) RequestVote(
 // election timeout.
 func (s *ElectionServer) AppendEntries(
 	ctx context.Context,
-	req *raft.AppendEntriesRequest,
-) (*raft.AppendEntriesResult, error) {
+	req *raftpb.AppendEntriesRequest,
+) (*raftpb.AppendEntriesResult, error) {
 	log.Printf("Heartbeat received from %d", req.GetLeaderId())
-	res := &raft.AppendEntriesResult{
+	res := &raftpb.AppendEntriesResult{
 		Term:    req.GetTerm(),
 		Success: true,
 	}
@@ -70,7 +70,7 @@ func (s *ElectionServer) Serve() error {
 	}
 
 	s.grpcServer = grpc.NewServer()
-	raft.RegisterElectionServer(s.grpcServer, s)
+	raftpb.RegisterElectionServer(s.grpcServer, s)
 
 	// Begin serving ElectionServer RPCs
 	err = s.grpcServer.Serve(listener)
