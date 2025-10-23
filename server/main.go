@@ -27,6 +27,16 @@ func (s *ElectionServer) RequestVote(ctx context.Context, req *raft.VoteRequest)
 	return vote, nil
 }
 
+func (s *ElectionServer) AppendEntries(ctx context.Context,
+	req *raft.AppendEntriesRequest) (*raft.AppendEntriesResult, error) {
+	log.Printf("Heartbeat received from %d", req.GetLeaderId())
+	res := &raft.AppendEntriesResult{
+		Term:    req.GetTerm(),
+		Success: true,
+	}
+	return res, nil
+}
+
 func main() {
 	var port int
 	flag.IntVar(&port, "port", -1, "The port number to use for this node")
@@ -109,20 +119,19 @@ func connectToPeer(myPort int, peerPort int) error {
 		return err
 	}
 	client := raft.NewElectionClient(conn)
-	voteRequest := &raft.VoteRequest{
-		CandidateId: int32(myPort),
+	heartbeat := &raft.AppendEntriesRequest{
+		LeaderId: int32(myPort),
 	}
 
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
 		for {
 			<-ticker.C
-			vote, err := client.RequestVote(context.TODO(), voteRequest)
+			_, err := client.AppendEntries(context.TODO(), heartbeat)
 			if err != nil {
-				log.Printf("Error calling RequestVote to %d: %v", peerPort, err)
+				log.Printf("Error calling AppendEntries to %d: %v", peerPort, err)
 				continue
 			}
-			log.Printf("Received vote from %d: %v", peerPort, vote.String())
 		}
 	}()
 	return nil
