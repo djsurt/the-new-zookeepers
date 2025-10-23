@@ -5,12 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"net"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	election "github.com/djsurt/the-new-zookeepers/server/internal"
 	"github.com/djsurt/the-new-zookeepers/server/proto/raft"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -19,22 +19,6 @@ import (
 type ElectionServer struct {
 	raft.UnimplementedElectionServer
 	clientID int
-}
-
-func (s *ElectionServer) RequestVote(ctx context.Context, req *raft.VoteRequest) (*raft.Vote, error) {
-	log.Printf("Vote request received from %d", req.GetCandidateId())
-	vote := &raft.Vote{Term: 1, VoteGranted: false}
-	return vote, nil
-}
-
-func (s *ElectionServer) AppendEntries(ctx context.Context,
-	req *raft.AppendEntriesRequest) (*raft.AppendEntriesResult, error) {
-	log.Printf("Heartbeat received from %d", req.GetLeaderId())
-	res := &raft.AppendEntriesResult{
-		Term:    req.GetTerm(),
-		Success: true,
-	}
-	return res, nil
 }
 
 func main() {
@@ -54,28 +38,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
-	if err != nil {
-		fmt.Printf("Failed to create tcp listener: %v\n", err)
-		os.Exit(1)
-	}
-
-	electionServer := &ElectionServer{
-		clientID: port,
-	}
-
-	grpcServer := grpc.NewServer()
-	raft.RegisterElectionServer(grpcServer, electionServer)
-
-	serverErrChan := make(chan error)
+	// Start the server in the background, listening for errors on the
+	// serverErr channel
+	electionServer := election.NewElectionServer(port)
+	serverErr := make(chan error)
 	go func(errChan chan<- error) {
-		err := grpcServer.Serve(listener)
+		fmt.Printf("Election server listening on port %d...\n", port)
+		err := electionServer.Serve()
 		if err != nil {
 			errChan <- err
 		}
-	}(serverErrChan)
+	}(serverErr)
 
-	fmt.Printf("Election server listening on port %d...\n", port)
+	// Start connecting to peers and sending messages.
 	for _, peer := range peers {
 		err := connectToPeer(port, peer)
 		if err != nil {
@@ -84,7 +59,7 @@ func main() {
 	}
 
 	// Wait for an error from server
-	err = <-serverErrChan
+	err = <-serverErr
 	fmt.Printf("Error from election server: %v\n", err)
 	os.Exit(1)
 }
